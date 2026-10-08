@@ -10,26 +10,24 @@ import (
 
 const validConfig = `
 cron: "30 8 * * *"
-management:
-  key: secret-management-key
-providers:
-  codex: { enabled: true }
+management_key: secret-management-key
+codex_enabled: true
 `
 
 func TestParseConfigRejectsInvalid(t *testing.T) {
 	for _, tc := range []struct {
 		name, yaml, want string
 	}{
-		{"six field cron", `cron: "0 30 8 * * *"` + "\nmanagement: {key: k}", "expected 5 fields"},
-		{"every descriptor", `cron: "@every 1m"` + "\nmanagement: {key: k}", "descriptors"},
-		{"daily descriptor", `cron: "@daily"` + "\nmanagement: {key: k}", "descriptors"},
-		{"CRON_TZ prefix", `cron: "CRON_TZ=Asia/Tokyo 30 8 * * *"` + "\nmanagement: {key: k}", "timezone setting"},
-		{"TZ prefix", `cron: "TZ=UTC 30 8 * * *"` + "\nmanagement: {key: k}", "timezone setting"},
-		{"bad field", `cron: "61 8 * * *"` + "\nmanagement: {key: k}", "invalid cron"},
-		{"missing cron", "management: {key: k}", "cron is required"},
-		{"missing key", `cron: "30 8 * * *"`, "management.key is required"},
-		{"bad timezone", `cron: "30 8 * * *"` + "\ntimezone: Mars/Base\nmanagement: {key: k}", "invalid timezone"},
-		{"bad base_url", `cron: "30 8 * * *"` + "\nmanagement: {key: k, base_url: 127.0.0.1:8317}", "base_url"},
+		{"six field cron", `cron: "0 30 8 * * *"` + "\nmanagement_key: k", "expected 5 fields"},
+		{"every descriptor", `cron: "@every 1m"` + "\nmanagement_key: k", "descriptors"},
+		{"daily descriptor", `cron: "@daily"` + "\nmanagement_key: k", "descriptors"},
+		{"CRON_TZ prefix", `cron: "CRON_TZ=Asia/Tokyo 30 8 * * *"` + "\nmanagement_key: k", "timezone setting"},
+		{"TZ prefix", `cron: "TZ=UTC 30 8 * * *"` + "\nmanagement_key: k", "timezone setting"},
+		{"bad field", `cron: "61 8 * * *"` + "\nmanagement_key: k", "invalid cron"},
+		{"missing cron", "management_key: k", "cron is required"},
+		{"missing key", `cron: "30 8 * * *"`, "management_key is required"},
+		{"bad timezone", `cron: "30 8 * * *"` + "\ntimezone: Mars/Base\nmanagement_key: k", "invalid timezone"},
+		{"bad management_url", `cron: "30 8 * * *"` + "\nmanagement_key: k\nmanagement_url: 127.0.0.1:8317", "management_url"},
 		{"unknown key", validConfig + "cronn: x\n", "field cronn not found"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

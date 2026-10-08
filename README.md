@@ -33,12 +33,12 @@ CLIProxyAPI（CPA）原生插件：按 cron 定时检查 Codex、Claude OAuth �
          enabled: true
          cron: "30 8 * * *"          # 必填，标准 5 字段
          timezone: "Asia/Tokyo"      # 可选，IANA 名称
-         management:
-           base_url: "http://127.0.0.1:8317"  # 可选，默认如左
-           key: "<管理密钥明文>"               # 必填
-         providers:
-           codex:  { enabled: true,  model: "" }
-           claude: { enabled: false, model: "" }
+         management_url: "http://127.0.0.1:8317"  # 可选，默认如左
+         management_key: "<管理密钥明文>"          # 必填
+         codex_enabled: true
+         codex_model: ""
+         claude_enabled: false
+         claude_model: ""
    ```
 
 3. 重启 CPA。宿主日志出现 `pluginhost: plugin registered plugin_id=cpa-quota-primer` 后，插件立即执行一轮预热，之后按 cron 执行。
@@ -49,10 +49,10 @@ CLIProxyAPI（CPA）原生插件：按 cron 定时检查 Codex、Claude OAuth �
 | --- | --- |
 | `cron` | 标准 5 字段 cron（分 时 日 月 周）。拒绝 6 字段（秒级）、`@daily` / `@every` 等描述符和 `CRON_TZ=` / `TZ=` 前缀，避免在 10 秒容错期内重复预热。 |
 | `timezone` | cron 使用的 IANA 时区。未配置时用宿主本地时区；宿主时区无法确定时，Go 运行时回退为 UTC。 |
-| `management.base_url` | CPA 管理 API 地址，默认 `http://127.0.0.1:8317`。走本机回环，不经过公网代理，也不受"禁止远程管理"影响。CPA 监听其他端口时改这里；Docker 部署填容器内端口。 |
-| `management.key` | 管理密钥明文。CPA 配置里只保存哈希，插件读不到，所以必须在这里填写。 |
-| `providers.<codex\|claude>.enabled` | 提供方开关。启用后，该提供方下全部 OAuth 账户自动参与。 |
-| `providers.<codex\|claude>.model` | 预热使用的模型。留空时使用该账户模型列表中第一个名称不含 `image` 的模型。 |
+| `management_url` | CPA 管理 API 地址，默认 `http://127.0.0.1:8317`。走本机回环，不经过公网代理，也不受"禁止远程管理"影响。CPA 监听其他端口时改这里；Docker 部署填容器内端口。 |
+| `management_key` | 管理密钥明文。CPA 配置里只保存哈希，插件读不到，所以必须在这里填写。 |
+| `codex_enabled` / `claude_enabled` | 提供方开关，默认 `false`。启用后，该提供方下全部 OAuth 账户自动参与。 |
+| `codex_model` / `claude_model` | 预热使用的模型。留空时使用该账户模型列表中第一个名称不含 `image` 的模型。 |
 
 配置非法时插件拒绝加载，宿主日志出现 `plugin.register failed: <原因>`。重配置非法时，正在运行的调度保持不变。
 

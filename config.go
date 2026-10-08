@@ -32,21 +32,19 @@ type Config struct {
 
 // Provider is the per-provider warm-up switch.
 type Provider struct {
-	Enabled bool   `yaml:"enabled"`
-	Model   string `yaml:"model"`
+	Enabled bool
+	Model   string
 }
 
 type rawConfig struct {
-	Cron       string `yaml:"cron"`
-	Timezone   string `yaml:"timezone"`
-	Management struct {
-		BaseURL string `yaml:"base_url"`
-		Key     string `yaml:"key"`
-	} `yaml:"management"`
-	Providers struct {
-		Codex  Provider `yaml:"codex"`
-		Claude Provider `yaml:"claude"`
-	} `yaml:"providers"`
+	Cron          string `yaml:"cron"`
+	Timezone      string `yaml:"timezone"`
+	ManagementURL string `yaml:"management_url"`
+	ManagementKey string `yaml:"management_key"`
+	CodexEnabled  bool   `yaml:"codex_enabled"`
+	CodexModel    string `yaml:"codex_model"`
+	ClaudeEnabled bool   `yaml:"claude_enabled"`
+	ClaudeModel   string `yaml:"claude_model"`
 	// The host writes these keys into every plugin config and only registers
 	// enabled plugins, so they are accepted and ignored.
 	Enabled  any `yaml:"enabled"`
@@ -78,23 +76,23 @@ func ParseConfig(raw []byte) (Config, error) {
 	if schedule.Next(time.Now().In(location)).IsZero() {
 		return Config{}, errors.New("invalid cron: expression never fires")
 	}
-	baseURL := strings.TrimRight(strings.TrimSpace(rc.Management.BaseURL), "/")
+	baseURL := strings.TrimRight(strings.TrimSpace(rc.ManagementURL), "/")
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
 	if u, err := url.Parse(baseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return Config{}, fmt.Errorf("invalid management.base_url %q: expected http(s)://host:port", baseURL)
+		return Config{}, fmt.Errorf("invalid management_url %q: expected http(s)://host:port", baseURL)
 	}
-	key := strings.TrimSpace(rc.Management.Key)
+	key := strings.TrimSpace(rc.ManagementKey)
 	if key == "" {
-		return Config{}, errors.New("management.key is required")
+		return Config{}, errors.New("management_key is required")
 	}
 	return Config{
 		Schedule: schedule,
 		BaseURL:  baseURL,
 		Key:      key,
-		Codex:    trimModel(rc.Providers.Codex),
-		Claude:   trimModel(rc.Providers.Claude),
+		Codex:    Provider{Enabled: rc.CodexEnabled, Model: strings.TrimSpace(rc.CodexModel)},
+		Claude:   Provider{Enabled: rc.ClaudeEnabled, Model: strings.TrimSpace(rc.ClaudeModel)},
 	}, nil
 }
 
@@ -117,9 +115,4 @@ func parseCron(expr string) (*cron.SpecSchedule, error) {
 		return nil, fmt.Errorf("invalid cron %q: %v", expr, err)
 	}
 	return parsed.(*cron.SpecSchedule), nil
-}
-
-func trimModel(p Provider) Provider {
-	p.Model = strings.TrimSpace(p.Model)
-	return p
 }

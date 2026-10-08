@@ -126,11 +126,12 @@ func succeed(primer.ModelRequest) (primer.ModelResponse, error) {
 	return primer.ModelResponse{StatusCode: http.StatusOK, Body: []byte(`{}`)}, nil
 }
 
+// providers holds the provider lines of the plugin config YAML.
 func run(t *testing.T, cpa *fakeCPA, providers string, exec executor) outcome {
 	t.Helper()
 	server := httptest.NewServer(cpa)
 	defer server.Close()
-	cfg, err := primer.ParseConfig([]byte(fmt.Sprintf("cron: \"30 8 * * *\"\nmanagement: {base_url: %q, key: %q}\nproviders: %s\n", server.URL, managementKey, providers)))
+	cfg, err := primer.ParseConfig([]byte(fmt.Sprintf("cron: \"30 8 * * *\"\nmanagement_url: %q\nmanagement_key: %q\n%s\n", server.URL, managementKey, providers)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +151,11 @@ func run(t *testing.T, cpa *fakeCPA, providers string, exec executor) outcome {
 	return o
 }
 
-const bothEnabled = "{codex: {enabled: true}, claude: {enabled: true}}"
+const (
+	bothEnabled = "codex_enabled: true\nclaude_enabled: true"
+	codexGPT    = "codex_enabled: true\ncodex_model: gpt-5.5"
+	claudeHaiku = "claude_enabled: true\nclaude_model: claude-haiku-4-5"
+)
 
 func window(used, limit, resetAfter int) string {
 	return fmt.Sprintf(`{"used_percent":%d,"limit_window_seconds":%d,"reset_after_seconds":%d,"reset_at":1791483563}`, used, limit, resetAfter)
@@ -180,7 +185,7 @@ func TestRoundCodexWindowJudgement(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cpa := newCPA(oauth("codex", "a"))
 			cpa.usage["idx-a"] = []reply{ok(tc.usage)}
-			o := run(t, cpa, "{codex: {enabled: true, model: gpt-5.5}}", succeed)
+			o := run(t, cpa, codexGPT, succeed)
 			if o.err != nil {
 				t.Fatal(o.err)
 			}
@@ -198,7 +203,7 @@ func TestRoundCodexWarmupIsPinnedMinimalRequest(t *testing.T) {
 	cpa := newCPA(oauth("codex", "a"))
 	cpa.accounts[0]["id_token"] = map[string]any{"chatgpt_account_id": "acct-1", "plan_type": "plus"}
 	cpa.usage["idx-a"] = []reply{ok(codexUsage(window(0, 18000, 18000), "null"))}
-	o := run(t, cpa, "{codex: {enabled: true, model: gpt-5.5}}", succeed)
+	o := run(t, cpa, codexGPT, succeed)
 	if len(o.warmed) != 1 {
 		t.Fatalf("warm-ups = %+v", o.warmed)
 	}
@@ -266,7 +271,7 @@ func TestRoundClaudeWindowJudgement(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cpa := newCPA(oauth("claude", "a"))
 			cpa.usage["idx-a"] = []reply{ok(tc.usage), ok(claudeUsage(claudeRunning, claudeWeek))}
-			o := run(t, cpa, "{claude: {enabled: true, model: claude-haiku-4-5}}", succeed)
+			o := run(t, cpa, claudeHaiku, succeed)
 			if got := o.account(t, "a")["decision"]; got != tc.decision {
 				t.Fatalf("decision = %v, want %s", got, tc.decision)
 			}
@@ -287,7 +292,7 @@ func TestRoundClaudeRecheck(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cpa := newCPA(oauth("claude", "a"))
 			cpa.usage["idx-a"] = []reply{ok(claudeUsage(claudeIdle, claudeWeek)), ok(tc.after)}
-			o := run(t, cpa, "{claude: {enabled: true, model: claude-haiku-4-5}}", succeed)
+			o := run(t, cpa, claudeHaiku, succeed)
 			if len(o.warmed) != 1 {
 				t.Fatalf("warm-ups = %+v", o.warmed)
 			}
@@ -317,7 +322,7 @@ func TestRoundSkipsIneligibleAccounts(t *testing.T) {
 		cpa.usage["idx-"+name] = []reply{idle}
 	}
 	cpa.usage["idx-switched-off"] = []reply{ok(claudeUsage(claudeIdle, claudeWeek))}
-	o := run(t, cpa, "{codex: {enabled: true, model: gpt-5.5}, claude: {enabled: false}}", succeed)
+	o := run(t, cpa, codexGPT+"\nclaude_enabled: false", succeed)
 	if len(o.warmed) != 1 || o.warmed[0].AuthID != "id-healthy" {
 		t.Fatalf("warm-ups = %+v", o.warmed)
 	}
@@ -344,7 +349,7 @@ func TestRoundQueryFailuresSkipAccount(t *testing.T) {
 			cpa := newCPA(oauth("codex", "a"), oauth("codex", "healthy"))
 			cpa.usage["idx-a"] = []reply{tc.reply}
 			cpa.usage["idx-healthy"] = []reply{ok(codexUsage(window(0, 18000, 18000), "null"))}
-			o := run(t, cpa, "{codex: {enabled: true, model: gpt-5.5}}", succeed)
+			o := run(t, cpa, codexGPT, succeed)
 			if o.err != nil {
 				t.Fatal(o.err)
 			}
@@ -368,8 +373,8 @@ func TestRoundModelSelection(t *testing.T) {
 		models          []string
 		want            string
 	}{
-		{"configured model wins", "{codex: {enabled: true, model: gpt-5.4-mini}}", []string{"gpt-5.5"}, "gpt-5.4-mini"},
-		{"first non-image model", "{codex: {enabled: true}}", []string{"gpt-image-2", "GPT-Image-1", "gpt-5.5", "gpt-5.4"}, "gpt-5.5"},
+		{"configured model wins", "codex_enabled: true\ncodex_model: gpt-5.4-mini", []string{"gpt-5.5"}, "gpt-5.4-mini"},
+		{"first non-image model", "codex_enabled: true", []string{"gpt-image-2", "GPT-Image-1", "gpt-5.5", "gpt-5.4"}, "gpt-5.5"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cpa := newCPA(oauth("codex", "a"))
@@ -387,7 +392,7 @@ func TestRoundNoUsableModelSkipsWarmup(t *testing.T) {
 	cpa := newCPA(oauth("codex", "a"))
 	cpa.usage["idx-a"] = []reply{ok(codexUsage(window(0, 18000, 18000), "null"))}
 	cpa.models["a.json"] = []string{"gpt-image-2"}
-	o := run(t, cpa, "{codex: {enabled: true}}", succeed)
+	o := run(t, cpa, "codex_enabled: true", succeed)
 	if len(o.warmed) != 0 || o.level("a") != "warn" || o.account(t, "a")["warmup_error"] == nil {
 		t.Fatalf("warm-ups = %+v log = %v", o.warmed, o.logs)
 	}
@@ -397,7 +402,7 @@ func TestRoundWarmupFailureIsLogged(t *testing.T) {
 	cpa := newCPA(oauth("claude", "a"), oauth("claude", "b"))
 	cpa.usage["idx-a"] = []reply{ok(claudeUsage(claudeIdle, claudeWeek))}
 	cpa.usage["idx-b"] = []reply{ok(claudeUsage(claudeIdle, claudeWeek)), ok(claudeUsage(claudeRunning, claudeWeek))}
-	o := run(t, cpa, "{claude: {enabled: true, model: claude-haiku-4-5}}", func(req primer.ModelRequest) (primer.ModelResponse, error) {
+	o := run(t, cpa, claudeHaiku, func(req primer.ModelRequest) (primer.ModelResponse, error) {
 		if req.AuthID == "id-a" {
 			return primer.ModelResponse{StatusCode: http.StatusTooManyRequests}, errors.New("rate limited")
 		}
@@ -415,7 +420,7 @@ func TestRoundWarmupFailureIsLogged(t *testing.T) {
 func TestRoundFailsWhenAccountsCannotBeListed(t *testing.T) {
 	server := httptest.NewServer(newCPA())
 	defer server.Close()
-	cfg, err := primer.ParseConfig([]byte(fmt.Sprintf("cron: \"30 8 * * *\"\nmanagement: {base_url: %q, key: wrong-key}", server.URL)))
+	cfg, err := primer.ParseConfig([]byte(fmt.Sprintf("cron: \"30 8 * * *\"\nmanagement_url: %q\nmanagement_key: wrong-key", server.URL)))
 	if err != nil {
 		t.Fatal(err)
 	}

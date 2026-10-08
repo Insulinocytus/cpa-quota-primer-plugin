@@ -251,7 +251,7 @@ func (p *Primer) firstModel(ctx context.Context, name string) (string, error) {
 			return m.ID, nil
 		}
 	}
-	return "", fmt.Errorf("account has no non-image model; set providers.<provider>.model")
+	return "", fmt.Errorf("account has no non-image model; set codex_model or claude_model")
 }
 
 // management calls the host management API. Transport failures are returned
