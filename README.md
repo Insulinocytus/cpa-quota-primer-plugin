@@ -7,7 +7,7 @@ CLIProxyAPI（CPA）原生插件：按 cron 定时检查 Codex、Claude OAuth �
 | 提供方 | 目标窗口 | 判定为未启动 | 跳过 |
 | --- | --- | --- | --- |
 | Codex | 五小时窗口（18000s）、周窗口（604800s），按 `limit_window_seconds` 识别 | `used_percent == 0` 且 `\|reset_after_seconds - limit_window_seconds\| <= 10` | 任一窗口 `used_percent >= 100`；字段缺失或无窗口时判为未知 |
-| Claude | 仅 `five_hour` | `utilization == 0` 且 `resets_at == null` | `five_hour` 或 `seven_day` 的 `utilization >= 100`；`five_hour` 缺失或 `resets_at` 无法解析时判为未知 |
+| Claude | 仅 `five_hour` | `utilization == 0` 且 `resets_at == null` | `five_hour` 或 `seven_day` 的 `utilization >= 100`；`five_hour` 缺失、`resets_at` 字段缺失或无法解析时判为未知 |
 
 只处理 `account_type` 为 `oauth`、未禁用、所属提供方已启用的账户。API key 账户永远不参与。
 

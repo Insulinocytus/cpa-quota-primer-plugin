@@ -83,9 +83,10 @@ func windowName(seconds float64) string {
 	return fmt.Sprintf("%gs", seconds)
 }
 
+// ResetsAt stays raw: a missing field must not read as null (not started).
 type claudeWindow struct {
-	Utilization *float64 `json:"utilization"`
-	ResetsAt    *string  `json:"resets_at"`
+	Utilization *float64        `json:"utilization"`
+	ResetsAt    json.RawMessage `json:"resets_at"`
 }
 
 // judgeClaude targets five_hour only; seven_day resets at a fixed weekly
@@ -113,8 +114,15 @@ func judgeClaude(body []byte) verdict {
 	if five == nil || five.Utilization == nil {
 		return unknown("five_hour or five_hour.utilization missing")
 	}
-	if five.ResetsAt != nil {
-		if _, err := time.Parse(time.RFC3339, *five.ResetsAt); err != nil {
+	if len(five.ResetsAt) == 0 {
+		return unknown("five_hour.resets_at missing")
+	}
+	var resetsAt *string
+	if json.Unmarshal(five.ResetsAt, &resetsAt) != nil {
+		return unknown("five_hour.resets_at is not a timestamp")
+	}
+	if resetsAt != nil {
+		if _, err := time.Parse(time.RFC3339, *resetsAt); err != nil {
 			return unknown("five_hour.resets_at is not a timestamp")
 		}
 	}
@@ -127,7 +135,7 @@ func judgeClaude(body []byte) verdict {
 	if usage.SevenDay != nil && *usage.SevenDay.Utilization >= 100 {
 		return verdict{decision: decisionExhausted, reason: "seven_day window exhausted"}
 	}
-	pending := five.ResetsAt == nil
+	pending := resetsAt == nil
 	if *five.Utilization == 0 && pending {
 		return verdict{decision: decisionNotStarted, reason: "five_hour window not started", resetPending: true}
 	}

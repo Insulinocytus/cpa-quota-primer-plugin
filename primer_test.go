@@ -261,6 +261,7 @@ func TestRoundClaudeWindowJudgement(t *testing.T) {
 		{"five hour missing", `{"seven_day":` + claudeWeek + `}`, "unknown"},
 		{"five hour null", claudeUsage("null", claudeWeek), "unknown"},
 		{"resets_at unparsable", claudeUsage(`{"utilization":0.0,"resets_at":"soon"}`, claudeWeek), "unknown"},
+		{"resets_at missing", claudeUsage(`{"utilization":0.0}`, claudeWeek), "unknown"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cpa := newCPA(oauth("claude", "a"))
