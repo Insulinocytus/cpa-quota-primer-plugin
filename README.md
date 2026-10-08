@@ -62,6 +62,7 @@ CLIProxyAPI（CPA）原生插件：按 cron 定时检查 Codex、Claude OAuth �
 - 预热请求经宿主 `host.model.execute` 固定发往该账户（Codex 走 Responses、Claude 走 Messages，输入 `hi`，非流式），与正常流量共用 CPA 的执行器、token 刷新、代理和请求日志，失败时不切换到其他账户。
 - Claude 预热后立即复查一次额度。若 `five_hour.resets_at` 仍为 null，记录警告（`recheck` 字段），下一轮照常重试。Codex 不复查：请求后 1–3 秒内 `reset_after_seconds` 仍等于完整时长，复查会误报。
 - 同一时刻最多一轮。上一轮未结束时到来的 cron 触发直接跳过，并记录 `trigger skipped`。CPA 停机期间错过的触发不补发。
+- 单次预热请求最长等待 2 分钟。CPA 停止或重配置插件时，正在执行的轮次立即取消；宿主无法取消已发出的 `host.model.execute`，该请求在宿主内跑完，结果丢弃。
 - 宿主先注册插件、后启动 HTTP 服务，所以启动轮在管理 API 无法连接时每秒重试，最多 2 分钟。管理 API 返回 HTTP 错误（如密钥错误的 401）时不重试，以免触发 CPA 的 IP 封禁。
 - 日志不包含管理密钥、账户 token 或上游响应正文。
 

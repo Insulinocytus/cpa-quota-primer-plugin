@@ -28,21 +28,22 @@ extern int cliproxyPluginCall(char*, uint8_t*, size_t, cliproxy_buffer*);
 extern void cliproxyPluginFree(void*, size_t);
 extern void cliproxyPluginShutdown(void);
 
-// The host keeps its callback table alive for the plugin instance lifetime.
-static const cliproxy_host_api* stored_host;
+// Copied by value: the host frees its table once shutdown returns, while a
+// detached host.model.execute (see hostExecute) may still be returning.
+static cliproxy_host_api stored_host;
 
-static void store_host(const cliproxy_host_api* host) { stored_host = host; }
+static void store_host(const cliproxy_host_api* host) { stored_host = *host; }
 
 static int call_host(const char* method, const uint8_t* request, size_t len, cliproxy_buffer* response) {
-    if (stored_host == NULL || stored_host->call == NULL) {
+    if (stored_host.call == NULL) {
         return 1;
     }
-    return stored_host->call(stored_host->host_ctx, method, request, len, response);
+    return stored_host.call(stored_host.host_ctx, method, request, len, response);
 }
 
 static void free_host_buffer(void* ptr, size_t len) {
-    if (stored_host != NULL && stored_host->free_buffer != NULL && ptr != NULL) {
-        stored_host->free_buffer(ptr, len);
+    if (stored_host.free_buffer != NULL && ptr != NULL) {
+        stored_host.free_buffer(ptr, len);
     }
 }
 */
@@ -158,7 +159,33 @@ func callHost(method string, payload any) (json.RawMessage, *hostError) {
 
 // hostExecute sends the request through host.model.execute, the same
 // executor path (headers, token refresh, proxy, request log) as user traffic.
-func hostExecute(_ context.Context, req primer.ModelRequest) (primer.ModelResponse, error) {
+//
+// The host runs this callback under context.Background() and offers no
+// cancel for it, so when ctx is done the call is detached: it finishes inside
+// the host and its result is dropped. This lets shutdown and reconfigure
+// return instead of waiting on an upstream that may never answer. On return
+// the detached call only touches Go code and the copied host table; the
+// library stays mapped (Windows never unloads it, ELF c-shared is linked
+// -z nodelete).
+func hostExecute(ctx context.Context, req primer.ModelRequest) (primer.ModelResponse, error) {
+	type outcome struct {
+		resp primer.ModelResponse
+		err  error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		resp, err := executeOnHost(req)
+		done <- outcome{resp, err}
+	}()
+	select {
+	case o := <-done:
+		return o.resp, o.err
+	case <-ctx.Done():
+		return primer.ModelResponse{}, ctx.Err()
+	}
+}
+
+func executeOnHost(req primer.ModelRequest) (primer.ModelResponse, error) {
 	result, failure := callHost("host.model.execute", req)
 	if failure != nil {
 		return primer.ModelResponse{StatusCode: failure.HTTPStatus}, errors.New(failure.Code + ": " + failure.Message)

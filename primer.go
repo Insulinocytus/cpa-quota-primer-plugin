@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // ModelRequest is the subset of the host's HostModelExecutionRequest the
@@ -30,8 +31,13 @@ type ModelResponse struct {
 }
 
 // ExecuteFunc runs a model request through the host executor. On failure it
-// returns the error and, when the host reports one, the HTTP status.
+// returns the error and, when the host reports one, the HTTP status. It must
+// return once ctx is done.
 type ExecuteFunc func(context.Context, ModelRequest) (ModelResponse, error)
+
+// warmupTimeout bounds one warm-up request so a hung upstream cannot hold
+// the round, and with it every later cron trigger, forever.
+const warmupTimeout = 2 * time.Minute
 
 // LogFunc writes one structured log line; level is debug, info or warn.
 type LogFunc func(level, message string, fields map[string]any)
@@ -152,7 +158,9 @@ func (p *Primer) prime(ctx context.Context, a account) {
 		}
 	}
 	fields["model"] = model
-	resp, err := p.Execute(ctx, warmupRequest(a, model))
+	execCtx, cancel := context.WithTimeout(ctx, warmupTimeout)
+	resp, err := p.Execute(execCtx, warmupRequest(a, model))
+	cancel()
 	fields["warmup_status"] = resp.StatusCode
 	if err != nil || resp.StatusCode < 200 || resp.StatusCode > 299 {
 		if err != nil {
